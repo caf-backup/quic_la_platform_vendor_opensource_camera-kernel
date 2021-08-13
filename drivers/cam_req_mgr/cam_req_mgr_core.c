@@ -46,6 +46,10 @@ void cam_req_mgr_core_link_reset(struct cam_req_mgr_core_link *link)
 	link->initial_skip = true;
 	link->sof_timestamp = 0;
 	link->prev_sof_timestamp = 0;
+	link->sof_trigger_cnt = 0;
+	link->last_sof_trigger_jiffies = 0;
+	link->wq_congestion = false;
+
 }
 
 void cam_req_mgr_handle_core_shutdown(void)
@@ -197,10 +201,17 @@ static void __cam_req_mgr_find_dev_name(
 			if (masked_val & (1 << dev->dev_bit))
 				continue;
 
+		if (link->wq_congestion)
+			CAM_INFO_RATE_LIMIT(CAM_CRM,
+				"WQ congestion, Skip Frame: req: %lld not ready on link: 0x%x for pd: %d dev: %s open_req count: %d",
+				req_id, link->link_hdl, pd,
+				dev->dev_info.name, link->open_req_cnt);
+		else
 			CAM_INFO(CAM_CRM,
 				"Skip Frame: req: %lld not ready on link: 0x%x for pd: %d dev: %s open_req count: %d",
-				req_id, link->link_hdl, pd, dev->dev_info.name,
-				link->open_req_cnt);
+				req_id, link->link_hdl, pd,
+				dev->dev_info.name, link->open_req_cnt);
+
 		}
 	}
 }
@@ -1362,18 +1373,18 @@ static int __cam_req_mgr_process_req(struct cam_req_mgr_core_link *link,
 	if (slot->status == CRM_SLOT_STATUS_NO_REQ) {
 		CAM_DBG(CAM_CRM, "No Pending req");
 		rc = 0;
-		goto error;
+		goto end;
 	}
 
 	if ((trigger != CAM_TRIGGER_POINT_SOF) &&
 		(trigger != CAM_TRIGGER_POINT_EOF))
-		goto error;
+		goto end;
 
 	if ((trigger == CAM_TRIGGER_POINT_EOF) &&
 		(!(link->trigger_mask & CAM_TRIGGER_POINT_SOF))) {
 		CAM_DBG(CAM_CRM, "Applying for last SOF fails");
 		rc = -EINVAL;
-		goto error;
+		goto end;
 	}
 
 	if (trigger == CAM_TRIGGER_POINT_SOF) {
@@ -1384,11 +1395,19 @@ static int __cam_req_mgr_process_req(struct cam_req_mgr_core_link *link,
 		link->prev_sof_timestamp = link->sof_timestamp;
 		link->sof_timestamp = trigger_data->sof_timestamp_val;
 
+		/* Check for WQ congestion */
+		if (jiffies_to_msecs(jiffies -
+			link->last_sof_trigger_jiffies) <
+			MINIMUM_WORKQUEUE_SCHED_TIME_IN_MS)
+			link->wq_congestion = true;
+		else
+			link->wq_congestion = false;
+
 		if (link->trigger_mask) {
 			CAM_ERR_RATE_LIMIT(CAM_CRM,
 				"Applying for last EOF fails");
 			rc = -EINVAL;
-			goto error;
+			goto end;
 		}
 
 		if ((slot->sync_mode == CAM_REQ_MGR_SYNC_MODE_SYNC) &&
@@ -1448,7 +1467,7 @@ static int __cam_req_mgr_process_req(struct cam_req_mgr_core_link *link,
 				rc = -EPERM;
 			}
 			spin_unlock_bh(&link->link_state_spin_lock);
-			goto error;
+			goto end;
 		}
 	}
 
@@ -1456,7 +1475,7 @@ static int __cam_req_mgr_process_req(struct cam_req_mgr_core_link *link,
 	if (rc < 0) {
 		/* Apply req failed retry at next sof */
 		slot->status = CRM_SLOT_STATUS_REQ_PENDING;
-
+		if (!link->wq_congestion) {
 		link->retry_cnt++;
 		if (link->retry_cnt == MAXIMUM_RETRY_ATTEMPTS) {
 			CAM_DBG(CAM_CRM,
@@ -1465,7 +1484,12 @@ static int __cam_req_mgr_process_req(struct cam_req_mgr_core_link *link,
 				in_q->slot[in_q->rd_idx].req_id);
 			__cam_req_mgr_notify_error_on_link(link, dev);
 			link->retry_cnt = 0;
-		}
+			}
+		}else
+			CAM_WARN_RATE_LIMIT(CAM_CRM,
+				"workqueue congestion, last applied idx:%d rd idx:%d",
+				in_q->last_applied_idx,
+				in_q->rd_idx);
 	} else {
 		if (link->retry_cnt)
 			link->retry_cnt = 0;
@@ -1514,9 +1538,14 @@ static int __cam_req_mgr_process_req(struct cam_req_mgr_core_link *link,
 		}
 	}
 
-	mutex_unlock(&session->lock);
-	return rc;
-error:
+end:
+	/*
+	* Only update the jiffies for SOF trigger,
+	* since it is used to protect from
+	*/
+	if (trigger == CAM_TRIGGER_POINT_SOF)
+		link->last_sof_trigger_jiffies = jiffies;
+
 	mutex_unlock(&session->lock);
 	return rc;
 }
@@ -1929,6 +1958,7 @@ static struct cam_req_mgr_core_link *__cam_req_mgr_reserve_link(
 	link->state = CAM_CRM_LINK_STATE_IDLE;
 	link->parent = (void *)session;
 	link->sync_link = NULL;
+	link->sof_trigger_cnt = 0;
 	mutex_unlock(&link->lock);
 
 	mutex_lock(&session->lock);
@@ -2546,6 +2576,14 @@ static int cam_req_mgr_process_trigger(void *priv, void *data)
 
 release_lock:
 	mutex_unlock(&link->req.lock);
+	if (trigger_data != NULL &&
+		trigger_data->trigger == CAM_TRIGGER_POINT_SOF) {
+		spin_lock_bh(&link->trigger_spin_lock);
+		if (link != NULL && link->sof_trigger_cnt > 0)
+			link->sof_trigger_cnt--;
+		spin_unlock_bh(&link->trigger_spin_lock);
+	}
+
 end:
 	return rc;
 }
@@ -2871,12 +2909,38 @@ static int cam_req_mgr_cb_notify_trigger(
 	crm_timer_reset(link->watchdog);
 	spin_unlock_bh(&link->link_state_spin_lock);
 
+	/*
+	* WA: FIXME
+	* If some tasks triggered by SOF in link->workq have not
+	* be finished yet, we will not add new task into work queue.
+	* Because if add new task, the schedule of this task will be
+	* delayed and this scheduling time point is uncertain, this
+	* maybe cause some timing issue between apply_req and ISP
+	* IRQ handle.
+	* now set MAX_SOF_TRIGGER_CNT_IN_WORKQ to be 1.
+	*/
+	if (trigger_data->trigger == CAM_TRIGGER_POINT_SOF) {
+		spin_lock_bh(&link->trigger_spin_lock);
+		if (link->sof_trigger_cnt >= MAX_SOF_TRIGGER_CNT_IN_WORKQ) {
+			CAM_WARN(CAM_CRM,
+				"trigger cnt:%d over more than %d, Skip it",
+				link->sof_trigger_cnt,
+				MAX_SOF_TRIGGER_CNT_IN_WORKQ);
+			spin_unlock_bh(&link->trigger_spin_lock);
+			rc = 0;
+			goto end;
+		}
+		link->sof_trigger_cnt++;
+			spin_unlock_bh(&link->trigger_spin_lock);
+	}
+
+
 	task = cam_req_mgr_workq_get_task(link->workq);
 	if (!task) {
 		CAM_ERR(CAM_CRM, "no empty task frame %lld",
 			trigger_data->frame_id);
 		rc = -EBUSY;
-		goto end;
+		goto trigger_free;
 	}
 	task_data = (struct crm_task_payload *)task->payload;
 	task_data->type = CRM_WORKQ_TASK_NOTIFY_SOF;
@@ -2890,7 +2954,28 @@ static int cam_req_mgr_cb_notify_trigger(
 	task->process_cb = &cam_req_mgr_process_trigger;
 	rc = cam_req_mgr_workq_enqueue_task(task, link, CRM_TASK_PRIORITY_0);
 
+	/*
+	* If task isn't enqueued into workq really,
+	* sof_trigger_cnt don't need to be increased.
+	*/
+	if (task->cancel == 1 || rc < 0) {
+		CAM_ERR(CAM_CRM,
+			"Fail to enqueue task into workq, rc=%d", rc);
+		goto trigger_free;
+	}
+
 end:
+	return rc;
+
+trigger_free:
+
+	if (trigger_data->trigger == CAM_TRIGGER_POINT_SOF) {
+		spin_lock_bh(&link->trigger_spin_lock);
+		if (link->sof_trigger_cnt > 0)
+			link->sof_trigger_cnt--;
+		spin_unlock_bh(&link->trigger_spin_lock);
+	}
+
 	return rc;
 }
 
@@ -3855,6 +3940,7 @@ int cam_req_mgr_core_device_init(void)
 	for (i = 0; i < MAXIMUM_LINKS_PER_SESSION; i++) {
 		mutex_init(&g_links[i].lock);
 		spin_lock_init(&g_links[i].link_state_spin_lock);
+		spin_lock_init(&g_links[i].trigger_spin_lock);
 		atomic_set(&g_links[i].is_used, 0);
 		cam_req_mgr_core_link_reset(&g_links[i]);
 	}

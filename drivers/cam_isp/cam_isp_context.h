@@ -221,6 +221,8 @@ struct cam_isp_context {
 	bool                                  init_received;
 	bool                                  split_acquire;
 	unsigned int                          init_timestamp;
+	bool                                  is_irq_disorder;
+	bool                                  irq_delay_detected;
 };
 
 /**
