@@ -41,7 +41,6 @@
 #define VERSION_1  1
 #define VERSION_2  2
 
-#define MAX_SOF_TRIGGER_CNT_IN_WORKQ 1
 
 /**
  * enum crm_workq_task_type
@@ -325,7 +324,6 @@ struct cam_req_mgr_connected_device {
  * @state                : link state machine
  * @parent               : pvt data - link's parent is session
  * @lock                 : mutex lock to guard link data operations
- * @trigger_spin_lock    : spin lock to protect sof_trigger_cnt
  * @link_state_spin_lock : spin lock to protect link state variable
  * @subscribe_event      : irqs that link subscribes, IFE should send
  *                         notification to CRM at those hw events.
@@ -351,8 +349,6 @@ struct cam_req_mgr_connected_device {
  *                         as part of shutdown.
  * @sof_timestamp_value  : SOF timestamp value
  * @prev_sof_timestamp   : Previous SOF timestamp value
- * @sof_trigger_cnt      : Counter to keep track of SOF trigger requests that
- *                         are submitted to the work queue.
  * @last_sof_trigger_jiffies : Record the jiffies of last sof trigger jiffies
  * @wq_congestion        : Indicates if WQ congestion is detected or not
  */
@@ -369,7 +365,6 @@ struct cam_req_mgr_core_link {
 	enum cam_req_mgr_link_state          state;
 	void                                *parent;
 	struct mutex                         lock;
-	spinlock_t                           trigger_spin_lock;
 	spinlock_t                           link_state_spin_lock;
 	uint32_t                             subscribe_event;
 	uint32_t                             trigger_mask;
@@ -386,7 +381,6 @@ struct cam_req_mgr_core_link {
 	bool                                 is_shutdown;
 	uint64_t                             sof_timestamp;
 	uint64_t                             prev_sof_timestamp;
-	int32_t                              sof_trigger_cnt;
 	uint64_t                             last_sof_trigger_jiffies;
 	bool                                 wq_congestion;
 };
