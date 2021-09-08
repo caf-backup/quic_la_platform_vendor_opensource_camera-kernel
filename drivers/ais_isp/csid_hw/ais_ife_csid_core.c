@@ -1563,6 +1563,13 @@ static int ais_ife_csid_get_total_pkts(
 	struct cam_hw_soc_info                         *soc_info;
 	const struct ais_ife_csid_reg_offset           *csid_reg;
 
+	if (csid_hw->hw_info->hw_state != CAM_HW_STATE_POWER_UP) {
+		CAM_ERR(CAM_ISP, "CSID:%d Invalid hw state :%d",
+			csid_hw->hw_intf->hw_idx,
+			csid_hw->hw_info->hw_state);
+		return -EINVAL;
+	}
+
 	csid_reg = csid_hw->csid_info->csid_reg;
 	soc_info = &csid_hw->hw_info->soc_info;
 
@@ -1650,9 +1657,9 @@ static int ais_csid_event_dispatch_process(void *priv, void *data)
 		work_data->irq_status[CSID_IRQ_STATUS_RDI2],
 		work_data->irq_status[CSID_IRQ_STATUS_RDI3]);
 
-	evt_payload.idx = csid_hw->hw_intf->hw_idx;
-	evt_payload.boot_ts = work_data->timestamp;
-	evt_payload.path = 0xF;
+	evt_payload.msg.idx = csid_hw->hw_intf->hw_idx;
+	evt_payload.msg.boot_ts = work_data->timestamp;
+	evt_payload.msg.path = 0xF;
 	evt_payload.u.err_msg.reserved =
 		work_data->irq_status[CSID_IRQ_STATUS_RX];
 
@@ -1662,7 +1669,7 @@ static int ais_csid_event_dispatch_process(void *priv, void *data)
 			break;
 		csid_hw->fatal_err_detected = true;
 
-		evt_payload.type = AIS_IFE_MSG_CSID_ERROR;
+		evt_payload.msg.type = AIS_IFE_MSG_CSID_ERROR;
 
 		rc = csid_hw->event_cb(csid_hw->event_cb_priv, &evt_payload);
 		break;
