@@ -244,7 +244,7 @@ static bool cam_res_mgr_shared_pinctrl_check_hold(void)
 		}
 	}
 
-	if (cam_res->shared_clk_ref_count > 1)
+	if (cam_res->shared_clk_ref_count >= 1)
 		hold = true;
 
 	return hold;
