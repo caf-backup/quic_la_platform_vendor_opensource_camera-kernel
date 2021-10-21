@@ -448,15 +448,20 @@ int32_t cam_sensor_update_slave_info(struct cam_cmd_probe *probe_info,
 	/* Userspace passes the pipeline delay in reserved field */
 	s_ctrl->pipeline_delay =
 		probe_info->reserved;
+	s_ctrl->isGMSLYUVSensor =
+		probe_info->isGMSLYUVSensor;
+
+	memcpy(s_ctrl->readAddr, probe_info->readAddr, sizeof(probe_info->readAddr));
 
 	s_ctrl->sensor_probe_addr_type =  probe_info->addr_type;
 	s_ctrl->sensor_probe_data_type =  probe_info->data_type;
 	CAM_DBG(CAM_SENSOR,
-		"Sensor Addr: 0x%x sensor_id: 0x%x sensor_mask: 0x%x sensor_pipeline_delay:0x%x",
+		"Sensor Addr: 0x%x sensor_id: 0x%x sensor_mask: 0x%x sensor_pipeline_delay:0x%x isGMSLYUVSensor:%d",
 		s_ctrl->sensordata->slave_info.sensor_id_reg_addr,
 		s_ctrl->sensordata->slave_info.sensor_id,
 		s_ctrl->sensordata->slave_info.sensor_id_mask,
-		s_ctrl->pipeline_delay);
+		s_ctrl->pipeline_delay,
+		s_ctrl->isGMSLYUVSensor);
 	return rc;
 }
 
@@ -618,6 +623,8 @@ void cam_sensor_query_cap(struct cam_sensor_ctrl_t *s_ctrl,
 		s_ctrl->sensordata->subdev_id[SUB_MODULE_OIS];
 	query_cap->slot_info =
 		s_ctrl->soc_info.index;
+	query_cap->LinkStatus =
+		s_ctrl->readData;
 }
 
 static uint16_t cam_sensor_id_by_mask(struct cam_sensor_ctrl_t *s_ctrl,
@@ -675,6 +682,7 @@ void cam_sensor_shutdown(struct cam_sensor_ctrl_t *s_ctrl)
 	s_ctrl->streamoff_count = 0;
 	s_ctrl->is_probe_succeed = 0;
 	s_ctrl->last_flush_req = 0;
+	s_ctrl->readData = 0;
 	s_ctrl->sensor_state = CAM_SENSOR_INIT;
 }
 
@@ -709,6 +717,33 @@ int cam_sensor_match_id(struct cam_sensor_ctrl_t *s_ctrl)
 	}
 	return rc;
 }
+
+uint32_t cam_sensor_read_reg(struct cam_sensor_ctrl_t *s_ctrl)
+{
+	uint32_t readData = 0;
+	int rc = 0, i;
+
+	if (!s_ctrl->readAddr[0][0]) {
+		CAM_ERR(CAM_SENSOR, " failed");
+		return readData;
+	}
+	for(i = 0; i < CAM_READ_MAX_NUM; i++){
+		uint32_t chipid   = 0;
+		if (s_ctrl->readAddr[0][i] != 0x0){
+			rc = camera_io_dev_read(
+				&(s_ctrl->io_master_info),s_ctrl->readAddr[0][i],
+				&chipid, CAMERA_SENSOR_I2C_TYPE_WORD,
+				CAMERA_SENSOR_I2C_TYPE_BYTE);
+
+			readData = readData | ((chipid & s_ctrl->readAddr[1][i] ?1:0) << i);
+			CAM_DBG(CAM_SENSOR, "Read reg for link status[%d] :0x%x, readData:0x%x",i,chipid,readData);
+		}
+	}
+	s_ctrl->readData = readData;
+
+	return rc;
+}
+
 
 int32_t cam_sensor_driver_cmd(struct cam_sensor_ctrl_t *s_ctrl,
 	void *arg)
@@ -792,6 +827,13 @@ int32_t cam_sensor_driver_cmd(struct cam_sensor_ctrl_t *s_ctrl,
 			goto free_power_settings;
 		}
 
+		/* Read GMSL sensor Link Status */
+		if(s_ctrl->isGMSLYUVSensor){
+			rc = cam_sensor_read_reg(s_ctrl);
+			if (rc < 0) {
+				CAM_ERR(CAM_SENSOR, "read link status failed");
+			}
+		}
 		CAM_INFO(CAM_SENSOR,
 			"Probe success,slot:%d,slave_addr:0x%x,sensor_id:0x%x",
 			s_ctrl->soc_info.index,
