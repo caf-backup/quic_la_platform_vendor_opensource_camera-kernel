@@ -1,5 +1,6 @@
 /* SPDX-License-Identifier: GPL-2.0-only */
 /*
+ * Copyright (c) 2021 Qualcomm Innovation Center, Inc. All rights reserved.
  * Copyright (c) 2017-2020, The Linux Foundation. All rights reserved.
  */
 
@@ -97,6 +98,7 @@ struct cam_sensor_ctrl_t {
 	struct camera_io_master io_master_info;
 	enum cam_sensor_state_t sensor_state;
 	uint8_t is_probe_succeed;
+	uint8_t is_always_on;
 	uint32_t id;
 	struct device_node *of_node;
 	struct cam_subdev v4l2_dev_str;
