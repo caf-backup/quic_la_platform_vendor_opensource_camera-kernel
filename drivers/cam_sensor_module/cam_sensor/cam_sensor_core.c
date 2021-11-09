@@ -448,20 +448,20 @@ int32_t cam_sensor_update_slave_info(struct cam_cmd_probe *probe_info,
 	/* Userspace passes the pipeline delay in reserved field */
 	s_ctrl->pipeline_delay =
 		probe_info->reserved;
-	s_ctrl->isGMSLYUVSensor =
-		probe_info->isGMSLYUVSensor;
+	s_ctrl->isDeSerializer =
+		probe_info->isDeSerializer;
 
 	memcpy(s_ctrl->readAddr, probe_info->readAddr, sizeof(probe_info->readAddr));
 
 	s_ctrl->sensor_probe_addr_type =  probe_info->addr_type;
 	s_ctrl->sensor_probe_data_type =  probe_info->data_type;
 	CAM_DBG(CAM_SENSOR,
-		"Sensor Addr: 0x%x sensor_id: 0x%x sensor_mask: 0x%x sensor_pipeline_delay:0x%x isGMSLYUVSensor:%d",
+		"Sensor Addr: 0x%x sensor_id: 0x%x sensor_mask: 0x%x sensor_pipeline_delay:0x%x isDeSerializer:%d",
 		s_ctrl->sensordata->slave_info.sensor_id_reg_addr,
 		s_ctrl->sensordata->slave_info.sensor_id,
 		s_ctrl->sensordata->slave_info.sensor_id_mask,
 		s_ctrl->pipeline_delay,
-		s_ctrl->isGMSLYUVSensor);
+		s_ctrl->isDeSerializer);
 	return rc;
 }
 
@@ -724,8 +724,8 @@ uint32_t cam_sensor_read_reg(struct cam_sensor_ctrl_t *s_ctrl)
 	int rc = 0, i;
 
 	if (!s_ctrl->readAddr[0][0]) {
-		CAM_ERR(CAM_SENSOR, " failed");
-		return readData;
+		CAM_ERR(CAM_SENSOR, "Addr failed");
+		return -ENODEV;
 	}
 	for(i = 0; i < CAM_READ_MAX_NUM; i++){
 		uint32_t chipid   = 0;
@@ -740,6 +740,11 @@ uint32_t cam_sensor_read_reg(struct cam_sensor_ctrl_t *s_ctrl)
 		}
 	}
 	s_ctrl->readData = readData;
+
+	if(s_ctrl->readData == 0){
+		CAM_WARN(CAM_SENSOR, "Read sensor link status is N/A, not have sensor link in this de-serializer");
+		return -ENODEV;
+	}
 
 	return rc;
 }
@@ -827,11 +832,15 @@ int32_t cam_sensor_driver_cmd(struct cam_sensor_ctrl_t *s_ctrl,
 			goto free_power_settings;
 		}
 
-		/* Read GMSL sensor Link Status */
-		if(s_ctrl->isGMSLYUVSensor){
+		/* Read sensor Link Status in de-serializer*/
+		if(s_ctrl->isDeSerializer){
 			rc = cam_sensor_read_reg(s_ctrl);
 			if (rc < 0) {
-				CAM_ERR(CAM_SENSOR, "read link status failed");
+				CAM_ERR(CAM_SENSOR,
+					"read link status failed or not have sensor link in this de-serializer");
+				cam_sensor_power_down(s_ctrl);
+				msleep(20);
+				goto free_power_settings;
 			}
 		}
 		CAM_INFO(CAM_SENSOR,

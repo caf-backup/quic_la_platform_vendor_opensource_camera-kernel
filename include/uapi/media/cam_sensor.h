@@ -168,7 +168,7 @@ struct cam_cmd_probe {
 	uint32_t    data_mask;
 	uint16_t    camera_id;
 	uint16_t    reserved;
-	uint8_t     isGMSLYUVSensor;
+	uint8_t     isDeSerializer;
 	uint32_t    readAddr[2][CAM_READ_MAX_NUM];
 } __attribute__((packed));
 
