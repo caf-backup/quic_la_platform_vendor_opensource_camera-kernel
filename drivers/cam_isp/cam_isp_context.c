@@ -964,6 +964,20 @@ static int __cam_isp_ctx_handle_buf_done_in_activated_state(
 	rc = __cam_isp_ctx_handle_buf_done_for_request(ctx_isp, req, done,
 		bubble_state, &done_next_req);
 
+	/*only for the res buffer done delay, singal current and next*/
+	if (done_next_req.num_handles == 0) {
+		if (ctx_isp->irq_delay_detected == true) {
+			struct cam_ctx_request  *next_req = list_last_entry(
+				&ctx->active_req_list, struct cam_ctx_request, list);
+			if (next_req->request_id != req->request_id) {
+				CAM_WARN(CAM_ISP, "IRQ delay detect, also singal next req");
+				ctx_isp->irq_delay_detected = false;
+				rc = __cam_isp_ctx_handle_buf_done_for_request(ctx_isp,
+					next_req, done, bubble_state, &done_next_req);
+			}
+		}
+	}
+
 	if (done_next_req.num_handles) {
 		struct cam_isp_hw_done_event_data unhandled_res;
 		struct cam_ctx_request  *next_req = list_last_entry(
@@ -989,14 +1003,17 @@ static int __cam_isp_ctx_handle_buf_done_in_activated_state(
 				next_req, &done_next_req,
 				bubble_state, &unhandled_res);
 
-			if (unhandled_res.num_handles == 0)
+			if (unhandled_res.num_handles == 0) {
 				CAM_INFO(CAM_ISP,
 					"BUF Done event handed for next request %lld",
 					next_req->request_id);
-			else
+				if (ctx_isp->irq_delay_detected  == false)
+					ctx_isp->irq_delay_detected = true;
+			} else {
 				CAM_ERR(CAM_ISP,
 					"BUF Done not handled for next request %lld",
 					next_req->request_id);
+			}
 		} else {
 			CAM_WARN(CAM_ISP,
 				"Req %lld only active request, spurious buf_done rxd",
@@ -4530,6 +4547,7 @@ static int __cam_isp_ctx_acquire_hw_v2(struct cam_context *ctx,
 		ctx_isp->substate_machine =
 			cam_isp_ctx_rdi_only_activated_state_machine;
 		ctx_isp->rdi_only_context = true;
+		ctx_isp->irq_delay_detected = false;
 	} else if (isp_hw_cmd_args.u.ctx_type == CAM_ISP_CTX_FS2) {
 		CAM_DBG(CAM_ISP, "FS2 Session has PIX, RD and RDI");
 		ctx_isp->substate_machine_irq =
