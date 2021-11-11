@@ -295,6 +295,7 @@ struct cam_isp_context {
 	unsigned int                          init_timestamp;
 	struct cam_req_mgr_core_workq        *workq;
 	int32_t                               trigger_id;
+	bool                                  is_irq_disorder;
 };
 
 /**

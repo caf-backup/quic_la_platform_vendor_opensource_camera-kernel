@@ -953,6 +953,7 @@ static int __cam_isp_ctx_handle_buf_done_in_activated_state(
 	struct cam_isp_hw_done_event_data done_next_req;
 
 	if (list_empty(&ctx->active_req_list)) {
+		ctx_isp->is_irq_disorder = true;
 		CAM_DBG(CAM_ISP, "Buf done with no active request");
 		return 0;
 	}
@@ -3221,10 +3222,21 @@ static int __cam_isp_ctx_rdi_only_sof_in_top_state(
 		CAM_DBG(CAM_ISP, "Notify CRM  SOF frame %lld",
 			ctx_isp->frame_id);
 
-		/*
-		 * It is idle frame with out any applied request id, send
-		 * request id as zero
-		 */
+	/*
+	* It's possible for rup done to be processed before
+	* SOF, check for first active request shutter here
+	*/
+	if (!list_empty(&ctx->active_req_list)) {
+		struct cam_ctx_request  *req = NULL;
+
+		req = list_first_entry(&ctx->active_req_list,
+		struct cam_ctx_request, list);
+		if (req->request_id > ctx_isp->reported_req_id) {
+			request_id = req->request_id;
+			ctx_isp->reported_req_id = request_id;
+		}
+	}
+
 		__cam_isp_ctx_send_sof_timestamp(ctx_isp, request_id,
 			CAM_REQ_MGR_SOF_EVENT_SUCCESS);
 	} else {
@@ -3343,10 +3355,19 @@ static int __cam_isp_ctx_rdi_only_sof_in_bubble_applied(
 	 * function handles the rest.
 	 */
 	list_del_init(&req->list);
-	list_add_tail(&req->list, &ctx->active_req_list);
-	ctx_isp->active_req_cnt++;
-	CAM_DBG(CAM_ISP, "move request %lld to active list(cnt = %d)",
+	if (ctx_isp->is_irq_disorder == false)
+	{
+		list_add_tail(&req->list, &ctx->active_req_list);
+		ctx_isp->active_req_cnt++;
+		CAM_DBG(CAM_ISP, "move request %lld to active list(cnt = %d)",
 			req->request_id, ctx_isp->active_req_cnt);
+
+	} else {
+		__cam_isp_ctx_enqueue_request_in_order(ctx, req);
+		ctx_isp->is_irq_disorder = false;
+		CAM_DBG(CAM_ISP, "move request %lld to pending list",
+			req->request_id);
+	}
 
 	if (!req_isp->bubble_report) {
 		if (req->request_id > ctx_isp->reported_req_id) {
@@ -3546,7 +3567,7 @@ static struct cam_isp_ctx_irq_ops
 		.irq_ops = {
 			__cam_isp_ctx_handle_error,
 			__cam_isp_ctx_rdi_only_sof_in_applied_state,
-			NULL,
+			__cam_isp_ctx_reg_upd_in_applied_state,
 			NULL,
 			NULL,
 			__cam_isp_ctx_buf_done_in_applied,
@@ -4764,6 +4785,7 @@ static int __cam_isp_ctx_start_dev_in_ready(struct cam_context *ctx,
 	ctx_isp->active_req_cnt = 0;
 	ctx_isp->reported_req_id = 0;
 	ctx_isp->bubble_frame_cnt = 0;
+	ctx_isp->is_irq_disorder = false;
 	ctx_isp->substate_activated = ctx_isp->rdi_only_context ?
 		CAM_ISP_CTX_ACTIVATED_APPLIED :
 		(req_isp->num_fence_map_out) ? CAM_ISP_CTX_ACTIVATED_EPOCH :
