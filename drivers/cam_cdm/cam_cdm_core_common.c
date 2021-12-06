@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: GPL-2.0-only
 /*
- * Copyright (c) 2017-2020, The Linux Foundation. All rights reserved.
+ * Copyright (c) 2017-2021, The Linux Foundation. All rights reserved.
  */
 
 #include <linux/delay.h>
@@ -204,7 +204,7 @@ void cam_cdm_notify_clients(struct cam_hw_info *cdm_hw,
 
 	for (i = 0; i < CAM_PER_CDM_MAX_REGISTERED_CLIENTS; i++) {
 		if (core->clients[i] != NULL) {
-		mutex_lock(&cdm_hw->hw_mutex);
+			mutex_lock(&cdm_hw->hw_mutex);
 			client = core->clients[i];
 			mutex_lock(&client->lock);
 			CAM_DBG(CAM_CDM, "Found client slot %d", i);
