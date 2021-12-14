@@ -112,6 +112,9 @@ struct cam_sensor_ctrl_t {
 	uint32_t last_flush_req;
 	uint16_t pipeline_delay;
 	int32_t open_cnt;
+	uint8_t isDeSerializer;
+	uint32_t readAddr[2][CAM_READ_MAX_NUM];
+	uint32_t readData;
 };
 
 #endif /* _CAM_SENSOR_DEV_H_ */
