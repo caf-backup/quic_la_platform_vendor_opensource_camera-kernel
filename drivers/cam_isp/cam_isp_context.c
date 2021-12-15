@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: GPL-2.0-only
 /*
+ * Copyright (c) 2021 Qualcomm Innovation Center, Inc. All rights reserved.
  * Copyright (c) 2017-2021, The Linux Foundation. All rights reserved.
  */
 
@@ -674,6 +675,13 @@ static void __cam_isp_ctx_send_sof_timestamp(
 	uint32_t sof_event_status)
 {
 	struct cam_req_mgr_message   req_msg;
+
+	if (request_id == 0) {
+		CAM_DBG(CAM_ISP,
+			"ctx:%u request id:0 frame number:%lld status:%u returned",
+			ctx_isp->base->ctx_id, ctx_isp->frame_id, sof_event_status);
+		 return;
+	}
 
 	if ((ctx_isp->use_frame_header_ts) && (request_id) &&
 		(sof_event_status == CAM_REQ_MGR_SOF_EVENT_SUCCESS))
