@@ -104,6 +104,23 @@ struct cam_ife_hw_mgr_debug {
 };
 
 /**
+ * struct cam_ife_mgr_bw_data - contain data to calc bandwidth for context
+ *
+ * @format:                    image format
+ * @width:                     image width
+ * @height:                    image height
+ * @framerate:                 framerate
+ *
+ */
+struct cam_ife_mgr_bw_data {
+	uint32_t format;
+	uint32_t width;
+	uint32_t height;
+	uint32_t framerate;
+};
+
+
+/**
  * struct cam_vfe_hw_mgr_ctx - IFE HW manager Context object
  *
  * concr_ctx:             HW Context currently used from this manager context
@@ -129,6 +146,7 @@ struct cam_ife_hw_mgr_ctx {
 	bool                                  is_stopping;
 	uint32_t                              num_in_ports;
 	struct cam_isp_in_port_generic_info **in_ports;
+	struct cam_ife_mgr_bw_data            bw_data;
 };
 
 /**
@@ -188,11 +206,10 @@ struct cam_ife_hw_mgr_ctx {
  * @dual_ife_irq_mismatch_cnt   irq mismatch count value per core, used for
  *                              dual VFE
  * @ctx_state               Indicates context state
+ * @offline_clk             Clock value to be configured for offline processing
  */
-
 struct cam_ife_hw_concrete_ctx {
 	struct list_head                list;
-	//struct cam_isp_hw_mgr_ctx       common;
 
 	void                           *tasklet_info;
 
@@ -248,6 +265,7 @@ struct cam_ife_hw_concrete_ctx {
 	bool                            dsp_enabled;
 	uint32_t                        dual_ife_irq_mismatch_cnt;
 	atomic_t                        ctx_state;
+	uint32_t                        offline_clk;
 };
 
 /**
@@ -322,20 +340,23 @@ struct cam_ife_mgr_offline_in_queue {
  * @input_queue:               input request queue for offline processing
  * @in_proc_queue:             currently processed requests queuse
  * @starting_offline_cnt:      number of offline HWs that are currently starting
+ * @offline_clk:               last set clock for offline processing
+ * @max_clk_threshold:         min clock threshold
+ * @nom_clk_threshold:         nom clock threshold
+ * @min_clk_threshold:         max clock threshold
+ * @bytes_per_clk:             bytes per clock processed
  */
 struct cam_ife_hw_mgr {
 	struct cam_isp_hw_mgr          mgr_common;
 	struct cam_hw_intf            *csid_devices[CAM_IFE_CSID_HW_NUM_MAX];
 	struct cam_hw_intf            *ife_devices[CAM_IFE_HW_NUM_MAX];
 	struct cam_soc_reg_map        *cdm_reg_map[CAM_IFE_HW_NUM_MAX];
-
 	struct mutex                   ctx_mutex;
 	atomic_t                       active_ctx_cnt;
 	struct list_head               free_ctx_list;
 	struct list_head               used_ctx_list;
 	struct cam_ife_hw_concrete_ctx ctx_pool[CAM_CTX_MAX];
 	struct cam_ife_hw_mgr_ctx      virt_ctx_pool[CAM_CTX_MAX];
-
 	struct cam_ife_csid_hw_caps    ife_csid_dev_caps[
 						CAM_IFE_CSID_HW_NUM_MAX];
 	struct cam_vfe_hw_get_hw_cap   ife_dev_caps[CAM_IFE_HW_NUM_MAX];
@@ -346,7 +367,12 @@ struct cam_ife_hw_mgr {
 	struct cam_ife_offline_hw      acquired_hw_pool[CAM_CTX_MAX];
 	struct cam_ife_mgr_offline_in_queue   input_queue;
 	struct cam_ife_mgr_offline_in_queue   in_proc_queue;
-	uint32_t   starting_offline_cnt;
+	uint32_t                       starting_offline_cnt;
+	uint32_t                       offline_clk;
+	uint32_t                       max_clk_threshold;
+	uint32_t                       nom_clk_threshold;
+	uint32_t                       min_clk_threshold;
+	uint32_t                       bytes_per_clk;
 };
 
 /**
