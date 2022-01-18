@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: GPL-2.0-only
+/* SPDX-License-Identifier: GPL-2.0-only */
 /*
  * Copyright (c) 2021 Qualcomm Innovation Center, Inc. All rights reserved.
  */
@@ -59,14 +59,14 @@ int cam_hdmi_bdg_get_src_resolution(bool *signal_stable,
 	struct cam_sensor_i2c_reg_array m_i2cWriteRegArray;
 
 	if (!cam_hdmi_bdg_cam_ctrl) {
-		pr_err("LT6911UXC is not ready.\n");
+		CAM_ERR(CAM_SENSOR, "LT6911UXC is not ready.");
 		*signal_stable = false;
 		*height = -1;
 		*width = -1;
 		return -EINVAL;
 	}
-	//camera_io_init(&(cam_hdmi_bdg_cam_ctrl->io_master_info));
-	//cam_sensor_power_up(cam_hdmi_bdg_cam_ctrl);
+	/* camera_io_init(&(cam_hdmi_bdg_cam_ctrl->io_master_info));*/
+	/* cam_sensor_power_up(cam_hdmi_bdg_cam_ctrl);*/
 	mutex_lock(&(cam_hdmi_bdg_cam_ctrl->cam_sensor_mutex));
 	memset(&m_i2cWriteSettings, 0, sizeof(m_i2cWriteSettings));
 
@@ -93,7 +93,7 @@ int cam_hdmi_bdg_get_src_resolution(bool *signal_stable,
 	rc = camera_io_dev_write(&(cam_hdmi_bdg_cam_ctrl->io_master_info),
 			&m_i2cWriteSettings);
 
-	// Check HDMI signal first
+	/* Check HDMI signal first*/
 	m_i2cWriteRegArray.reg_addr = 0xff;
 	m_i2cWriteRegArray.reg_data = 0x86;
 	rc = camera_io_dev_write(&(cam_hdmi_bdg_cam_ctrl->io_master_info),
@@ -103,7 +103,7 @@ int cam_hdmi_bdg_get_src_resolution(bool *signal_stable,
 			0xa3, &hdmi_signal_status,
 			CAMERA_SENSOR_I2C_TYPE_BYTE,
 			CAMERA_SENSOR_I2C_TYPE_BYTE);
-	CAM_ERR(CAM_SENSOR, "lt6911uxc signal stable %x", hdmi_signal_status);
+	CAM_INFO(CAM_SENSOR, "lt6911uxc signal stable %x", hdmi_signal_status);
 	if (hdmi_signal_status == HDMI_BDG_HDMI_DISCONNECTED) {
 		*signal_stable = false;
 		*height = 0;
@@ -112,8 +112,8 @@ int cam_hdmi_bdg_get_src_resolution(bool *signal_stable,
 		goto end;
 	}
 	if (hdmi_signal_status > 0xFF) {
-		// Read value from I2C should not upper than 0xFF.
-		// If so, it means LT6911UXC is closed.
+		/* Read value from I2C should not upper than 0xFF.*/
+		/* If so, it means LT6911UXC is closed.*/
 		*signal_stable = false;
 		*height = -1;
 		*width = -1;
@@ -150,7 +150,7 @@ int cam_hdmi_bdg_get_src_resolution(bool *signal_stable,
 	*height = (vactive_h << 8) | vactive_l;
 	*width = (hactive_h << 8) | hactive_l;
 	*id = cam_hdmi_bdg_cam_ctrl->id;
-	CAM_ERR(CAM_SENSOR, "signal stable %d %d, x %d id %d",
+	CAM_INFO(CAM_SENSOR, "signal stable %d %d, x %d id %d",
 			*signal_stable, *width,
 			*height, *id);
 

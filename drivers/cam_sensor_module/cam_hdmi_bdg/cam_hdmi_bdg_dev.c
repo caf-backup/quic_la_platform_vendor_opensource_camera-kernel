@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: GPL-2.0-only
+/* SPDX-License-Identifier: GPL-2.0-only */
 /*
  * Copyright (c) 2021 Qualcomm Innovation Center, Inc. All rights reserved.
  */
@@ -71,9 +71,9 @@ static int hdmi_bdg_irq_handler_dev_release(struct inode *inodp,
 static ssize_t hdmi_bdg_irq_handler_dev_read(struct file *filp,
 		char __user *buf, size_t n_read, loff_t *off)
 {
-	pr_info("hdmi_bdg_irq_handler: wait IRQ happened.\n");
+	CAM_INFO(CAM_SENSOR, "hdmi_bdg_irq_handler: wait IRQ happened");
 	wait_event_interruptible(hdmi_bdg_read_wq, is_irq_happen);
-	pr_info("hdmi_bdg_irq_handler: IRQ happened.\n");
+	CAM_INFO(CAM_SENSOR, "hdmi_bdg_irq_handler: IRQ happened");
 	is_irq_happen = false;
 	return 0;
 }
@@ -89,7 +89,7 @@ static long hdmi_bdg_irq_handler_dev_ioctl(struct file *filp,
 			&s_hdmi_bdg_res_info,
 			sizeof(s_hdmi_bdg_res_info));
 		if (rc != 0)
-			pr_err("hdmi_bdg_irq_handler: IOCTL read error!\n");
+			CAM_ERR(CAM_SENSOR, "hdmi_bdg_irq_handler: IOCTL read error!");
 		break;
 	case HDMI_BDG_IRQ_HANDLER_IOCTL_CMD_GETRES_DIR:
 		rc = cam_hdmi_bdg_get_src_resolution(
@@ -98,7 +98,7 @@ static long hdmi_bdg_irq_handler_dev_ioctl(struct file *filp,
 			&s_hdmi_bdg_res_info.height,
 			&s_hdmi_bdg_res_info.id);
 		if (!rc) {
-			pr_info("HDMI_BDG Input resolution = %d x %d\n",
+			CAM_INFO(CAM_SENSOR, "HDMI_BDG Input resolution = %d x %d",
 				s_hdmi_bdg_res_info.width,
 				s_hdmi_bdg_res_info.height);
 		}
@@ -106,7 +106,7 @@ static long hdmi_bdg_irq_handler_dev_ioctl(struct file *filp,
 			&s_hdmi_bdg_res_info,
 			sizeof(s_hdmi_bdg_res_info));
 		if (rc != 0)
-			pr_err("hdmi_bdg_irq_handler: IOCTL eead error!\n");
+			CAM_ERR(CAM_SENSOR, "hdmi_bdg_irq_handler: IOCTL read error!");
 		break;
 	case HDMI_BDG_IRQ_HANDLER_IOCTL_CMD_RST:
 		s_hdmi_bdg_res_info.width = -1;
@@ -115,7 +115,7 @@ static long hdmi_bdg_irq_handler_dev_ioctl(struct file *filp,
 		s_hdmi_bdg_res_info.id = 0;
 		break;
 	default:
-		pr_err("hdmi_bdg_irq_handler: IOCTL unknown command!\n");
+		CAM_ERR(CAM_SENSOR, "hdmi_bdg_irq_handler: IOCTL unknown command!");
 		break;
 	}
 	return 0;
@@ -145,20 +145,20 @@ static irqreturn_t hdmi_bdg_irq_handler(int irq, void *p)
 {
 	int rc = 0;
 
-	pr_err("HDMI hotplug happened\n");
+	CAM_INFO(CAM_SENSOR, "HDMI hotplug happened");
 	rc = cam_hdmi_bdg_get_src_resolution(
 			&s_hdmi_bdg_res_info.have_hdmi_signal,
 			&s_hdmi_bdg_res_info.width,
 			&s_hdmi_bdg_res_info.height,
 			&s_hdmi_bdg_res_info.id);
 	if (!rc) {
-		pr_info("HDMI_BDG Input resolution = %d x %d\n",
+		CAM_INFO(CAM_SENSOR, "HDMI_BDG Input resolution = %d x %d",
 				s_hdmi_bdg_res_info.width,
 				s_hdmi_bdg_res_info.height);
 		is_irq_happen = true;
 		wake_up_all(&hdmi_bdg_read_wq);
 	} else {
-		pr_err("Get resolution failed!\n");
+		CAM_ERR(CAM_SENSOR, "Get resolution failed!");
 	}
 	return IRQ_HANDLED;
 }
@@ -173,7 +173,7 @@ static int hdmi_bdg_irq_handler_probe(struct platform_device *pdev)
 			"hdmi_bdg_irq_pin", 0, &flags);
 	ret = gpio_request(hdmi_bdg_irq_gpio, "hdmi_bdg_irq_pin");
 	if (ret) {
-		pr_err("Error! can't request irq pin %x.\n", hdmi_bdg_irq_gpio);
+		CAM_ERR(CAM_SENSOR, "Error! can't request irq pin %x", hdmi_bdg_irq_gpio);
 		ret = -EINVAL;
 		goto fail_exit;
 	}
@@ -183,7 +183,7 @@ static int hdmi_bdg_irq_handler_probe(struct platform_device *pdev)
 			IRQF_TRIGGER_FALLING | IRQF_ONESHOT,
 			"hdmi_bdg_irq", NULL);
 	if (ret) {
-		pr_err("Failed to request irq\n");
+		CAM_ERR(CAM_SENSOR, "Failed to request irq");
 		ret = -EINVAL;
 		goto fail_exit;
 	}
@@ -198,7 +198,7 @@ static int hdmi_bdg_irq_handler_probe(struct platform_device *pdev)
 	ret = alloc_chrdev_region(&hdmi_bdg_irq_handler_dev, 0, 1,
 			HDMI_BDG_IRQ_HANDLER_DEVNAME);
 	if (ret) {
-		pr_err("alloc_chrdev_region failed with error code %d\n", ret);
+		CAM_ERR(CAM_SENSOR, "alloc_chrdev_region failed with error code %d", ret);
 		goto fail_cdev_del;
 	}
 	ret = cdev_add(hdmi_bdg_irq_handler_cdev, hdmi_bdg_irq_handler_dev, 1);
